@@ -4,7 +4,9 @@ var server = require('http').Server(app);
 var path = require('path');
 
 var sockets = {};
-var players  [];
+var players = [];
+var groups = [];
+var bullets = [];
 
 
 
@@ -38,7 +40,6 @@ io.sockets.on('connection',function(socket){
 
 
 function Unit(x,y,radius,color){
-
   var self = {
     id:Math.random(),
     color:color,
@@ -53,8 +54,6 @@ function Unit(x,y,radius,color){
   //can take damage
   self.takeDamage = function(damage){
     self.health -= damage;
-    if(self.health <= 0)
-      self.destroy();
     self.statsUpdate = true;
   }
 
@@ -78,13 +77,41 @@ function Unit(x,y,radius,color){
   return self;
 }
 
-function Group(){
-  //can update
+function Group(owner,unit){
+  var self = {
+    id:Math.random(),
+    owner:owner,
+    units:[unit]
+  }
+  groups.push(self);
   //can  have a target
+  self.target = new Target();
+
+  //can update
+  self.update = function(){
+    var moveUpdate = self.units.some(function(unit){return unit.statsUpdate == true;});
+    var statsUpdate = self.units.some(function(unit){return unit.moveUpdate == true;});
+    //checks if a unit needs a stat update
+    if(statsUpdate){
+
+    }
+    //checks if a unit needs a move update
+    if(moveUpdate){
+
+    }
+    if(moveUpdate || statsUpdate){
+      self.units.map(function(unit){
+        unit.statsUpdate = false;
+        unit.moveUpdate = false;
+      });
+    }
+    return;
+  }
   //can add or remove units
 }
 
 function Bullet(x,y,damage,target){
+  //can have a target
   var self = {
     x:x,
     y:y,
@@ -93,8 +120,35 @@ function Bullet(x,y,damage,target){
     radius:5,
     color:"#000000"
   }
+  bullets.push(self);
   //can move
+  self.move = function(){
+    var rise = (self.target.y - self.y);
+    var run  = (self.target.x - self.x);
+    var length = Math.sqrt(Math.pow(run,2) + Math.pow(rise,2));
+
+    self.x += (run/length) * 3;
+    self.y += (rise/length) * 3;
+
+    if(distance(self,self.target) <= 3.1)
+      self.damage();
+  }
   //can cause damage
-  //can have a target
+  self.damage = function(){
+    self.target.damage(self.damage);
+
+    for(var i =0; i < bullets.length;i++){
+      if(self.id == bullets[i].id)
+        bullets.splice(i,1);
+      return;
+    }
+  }
   return self;
+}
+
+
+function Target(){
+  var moveLocation = null;
+  var groupAttacking = null;
+  var groupsDefending = [];
 }
