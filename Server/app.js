@@ -8,6 +8,7 @@ var players = [];
 var groups = [];
 var bullets = [];
 
+const mapSize = {width:2000,height:2000};
 
 
 
@@ -33,6 +34,39 @@ io.sockets.on('connection',function(socket){
   players.push(player);
   socket.id = player.id;
   sockets[socket.id] = socket;
+
+  player.createUnit = function(pos){
+    pos.radius = 1;
+    if(player.unitsToCreate <= 0)
+      return "Not Enough Units To Create";
+
+    var clickedGroups = groups.filter(function(group){
+      return group.cont(pos);
+    });
+
+    if(clickedGroups.length > 1)
+      return "Cannot create a Unit touching two groups";
+
+    else if(clickedGroups.length == 0)
+      player.groups.push(Group(Unit(pos.x,pos.y,10,player.color),player.id));
+
+    else if(clickedGroups.length == 1 && clickedGroups[0].owner == player.id)
+      clickedGroups[0].add(Unit(pos.x,pos.y,10,player.color));
+
+    else
+      return "Cannot Create Unit Here";
+  }
+
+
+
+
+
+
+
+  socket.on('createUnit',function(pos){
+    var outcome = player.createUnit(pos);
+    console.log(outcome + " " + groups.length);
+  });
 });
 
 
@@ -107,6 +141,12 @@ function Group(owner,unit){
     }
     return;
   }
+
+  self.cont = function(pos){
+    return self.units.some(function(unit){
+      return distance(unit,pos) <= pos.radius + unit.radius;
+    });
+  }
   //can add or remove units
 }
 
@@ -151,4 +191,7 @@ function Target(){
   var moveLocation = null;
   var groupAttacking = null;
   var groupsDefending = [];
+}
+function distance(item1,item2){
+  return Math.sqrt(Math.pow(item2.x - item1.x,2) + Math.pow(item2.y - item1.y,2));
 }
