@@ -29,7 +29,8 @@ io.sockets.on('connection',function(socket){
     id:Math.random(),
     unitsToCreate:10,
     color:randomColor(),
-    groups:[]
+    groups:[],
+    selectedGroup:null
   }
   players.push(player);
   socket.id = player.id;
@@ -41,6 +42,8 @@ io.sockets.on('connection',function(socket){
       return "Not Enough Units To Create";
 
     var unit = Unit(pos.x,pos.y,10,player.color);
+    if(unit.x-unit.radius < 0 ||unit.y-unit.radius <0 ||unit.y +unit.radius > mapSize.height ||unit.x + unit.radius > mapSize.width)
+       return "Out of Bounds";
     var clickedGroups = groups.filter(function(group){
       return group.cont(unit);
     });
@@ -61,6 +64,30 @@ io.sockets.on('connection',function(socket){
     return "success"
   }
 
+  player.controlUnit = function(pos){
+    var clickedGroups = groups.filter(function(group){
+      return group.cont(pos);
+    });
+
+    if(clickedGroups.length > 1)
+      return "Too many groups selected";
+    else if(clickedGroups.length == 0){
+      if(player.selectedGroup != null && player.selectedGroup.owner == player.id)
+        player.selectedGroup.target.setTarget(pos);
+      else
+        return "Nothing Selected";
+    }
+    else if(player.selectedGroup == null)
+      player.selectedGroup = clickedGroups[0];
+    else if(player.selectedGroup.owner != player.id)
+      player.selectedGroup = clickedGroups[0];
+    else if(player.selectedGroup.id == clickedGroups[0].id)
+      player.selectedGroup = null;
+    else if(player.selectedGroup.owner == player.id && clickedGroups[0].owner != player.id)
+      player.selectedGroup.target.setTarget(clickedGroups[0]);
+
+  }
+
 
 
 
@@ -69,8 +96,10 @@ io.sockets.on('connection',function(socket){
 
   socket.on('createUnit',function(pos){
     var outcome = player.createUnit(pos);
-    console.log(outcome + " " + groups.length);
   });
+  socket.on('controlUnit',function(pos){
+    var outcome = player.controlUnit(pos);
+  })
 
 
   socket.emit('connection',{player:player,mapSize:mapSize});
@@ -86,9 +115,7 @@ function Unit(x,y,radius,color){
     id:Math.random(),
     radius:radius,
     color:color,
-    color:color,
     health:1,
-    moveUpdate:false,
     statsUpdate:false
   }
 
@@ -109,11 +136,13 @@ function Unit(x,y,radius,color){
   self.move = function(moveX,moveY){
     self.x += moveX;
     self.y += moveY;
-    self.moveUpdate = true;
   }
   //can shoot
   self.shoot = function(damage,target){
     Bullet(self.x,self.y,damage,target);
+  }
+  self.drawPack = function(){
+    return {x:self.x,y:self.y,color:self.color,radius:self.radius};
   }
   return self;
 }
@@ -127,6 +156,10 @@ function Group(unit,owner){
   groups.push(self);
   //can  have a target
   self.target = new Target();
+  self.x = self.units[0].x;
+  self.y = self.units[0].y;
+  self.attackRange = 50;
+  self.moveSpeed = 1;
 
   //can update
   self.update = function(){
@@ -134,16 +167,31 @@ function Group(unit,owner){
     var statsUpdate = self.units.some(function(unit){return unit.moveUpdate == true;});
     //checks if a unit needs a stat update
     if(statsUpdate){
-
+      //self.attackRange = self.units.map(function(u))
     }
     //checks if a unit needs a move update
-    if(moveUpdate){
+    var dist = self.target.getTarget() != null && self.target.getTarget().units != undefined ? self.attackRange : self.moveSpeed / 2;
+    if(self.target.getTarget() != null && distance(self,self.target.getTarget()) > dist){
+      var rise = (self.target.getTarget().y - self.y);
+      var run  = (self.target.getTarget().x - self.x);
+      var length = Math.sqrt(Math.pow(run,2) + Math.pow(rise,2));
+      //console.log(run + " " + rise + " " + length);
 
+      self.units.map(function(unit){
+        unit.move((run/length)*self.moveSpeed,(rise/length)*self.moveSpeed);
+      });
+
+      var avgStats = {x:0,y:0};
+      self.units.map(function(unit){
+        avgStats.x += unit.x;
+        avgStats.y += unit.y;
+      });
+      self.x = avgStats.x / self.units.length;
+      self.y = avgStats.y / self.units.length;
     }
-    if(moveUpdate || statsUpdate){
+    if(statsUpdate){
       self.units.map(function(unit){
         unit.statsUpdate = false;
-        unit.moveUpdate = false;
       });
     }
     return;
@@ -156,6 +204,11 @@ function Group(unit,owner){
   }
   self.add = function(unit){
     self.units.push(unit);
+  }
+  self.drawPack = function(){
+    return self.units.map(function(unit){
+      return unit.drawPack();
+    });
   }
   //can add or remove units
 }
@@ -193,21 +246,57 @@ function Bullet(x,y,damage,target){
       return;
     }
   }
+
+  self.drawPack = function(){
+    return {x:self.x,y:self.y,color:self.color,radius:self.radius};
+  }
   return self;
 }
+
+
+function drawLoop(){
+  var drawPack = [];
+  for(var i =0; i < groups.length;i++)
+    drawPack = drawPack.concat(groups[i].drawPack());
+
+
+
+  for(var i in sockets){
+    var socket = sockets[i];
+    socket.emit('serverDraw',drawPack);
+  }
+}
+function gameLoop(){
+  for(var i =0; i < groups.length;i++)
+    groups[i].update();
+}
+setInterval(drawLoop,1000/60);
+setInterval(gameLoop,1000/30);
 
 
 function Target(){
   var moveLocation = null;
   var groupAttacking = null;
   var groupsDefending = [];
+  this.setTarget = function(item){
+      if(item.units != undefined)
+        groupAttacking = item;
+      else {
+        groupAttacking = null;
+        moveLocation = item;
+      }
+  }
+  this.getTarget = function(){
+    if(moveLocation != null)
+      return moveLocation;
+    if(groupAttacking != null)
+      return groupAttacking;
+    return null;
+  }
 }
 function distance(item1,item2){
   return Math.sqrt(Math.pow(item2.x - item1.x,2) + Math.pow(item2.y - item1.y,2));
 }
 function randomColor(){
-  var randomColor = '#' + (Math.random() * 0xFFFFFF << 0).toString(16);
-  return Players.filter(function(player){
-    return player.color == randomColor;
-  }).length == 0 ? randomColor : randomColor();
+  return '#' + (Math.random() * 0xFFFFFF << 0).toString(16);
 }
