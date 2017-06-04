@@ -64,18 +64,27 @@ function gameLoop(){
 
     drawGrid(sMx0,sMy0);
 
-    var objsToDraw = serverDraw.filter(function(obj){
-      return obj.x + obj.radius >= sMx0 &&
-             obj.x - obj.radius <= sMx0 + s.width  &&
-             obj.y + obj.radius >= sMy0  &&
-             obj.y - obj.radius <= sMy0 +s.height ;
+    var objsToDraw = serverDraw.filter(function(grp){
+      return grp.units.filter(function(obj){
+        return obj.x + obj.radius >= sMx0 &&
+               obj.x - obj.radius <= sMx0 + s.width  &&
+               obj.y + obj.radius >= sMy0  &&
+               obj.y - obj.radius <= sMy0 +s.height ;
+           }).length != 0;
     });
+  objsToDraw.map(function(grp){
+    if(grp.target != null)
+      drawLine(grp,grp.target,sMx0,sMy0);
+  });
     for(var i= 0 ; i < objsToDraw.length;i++){
-      drawCircle(objsToDraw[i],sMx0,sMy0);
+      objsToDraw[i].units.map(function(unit){
+        drawCircle(unit,sMx0,sMy0, player.selectedGroup != null && player.selectedGroup.id == objsToDraw[i].id ? 3 : 1);
+      });
     }
 }
 
 function drawGrid(sMx0,sMy0){
+  ctx.lineWidth = 1;
   ctx.beginPath();
   for(var x = rectSize - (sMx0 % rectSize); x < s.width + sM.x;x+= rectSize){
     ctx.moveTo(x,0);
@@ -106,11 +115,19 @@ function drawGrid(sMx0,sMy0){
         ctx.fillRect(0,mapSize.height + s.height/2 - sM.y,s.width,mapSize.height + s.height/2 - sM.y);
   }
 }
-function drawCircle(obj,screenX0,screenY0){
+function drawCircle(obj,screenX0,screenY0,lineWidth){
+  ctx.lineWidth = lineWidth;
   ctx.beginPath();
   ctx.arc(obj.x-screenX0,obj.y-screenY0,obj.radius,0,2 * Math.PI, false);
   ctx.fillStyle = obj.color;
   ctx.fill();
+  ctx.stroke();
+}
+function drawLine(obj1,obj2,screenX0,screenY0){
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(obj1.x-screenX0,obj1.y-screenY0);
+  ctx.lineTo(obj2.x-screenX0,obj2.y-screenY0);
   ctx.stroke();
 }
 function update(){
@@ -138,4 +155,8 @@ socket.on('connection',function(data){
 
 socket.on('serverDraw',function(drawPack){
   serverDraw = drawPack;
+});
+
+socket.on('unitControlling',function(p){
+  player = p;
 });

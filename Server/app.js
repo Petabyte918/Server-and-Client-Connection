@@ -86,6 +86,7 @@ io.sockets.on('connection',function(socket){
     else if(player.selectedGroup.owner == player.id && clickedGroups[0].owner != player.id)
       player.selectedGroup.target.setTarget(clickedGroups[0]);
 
+      return 'success';
   }
 
 
@@ -96,9 +97,14 @@ io.sockets.on('connection',function(socket){
 
   socket.on('createUnit',function(pos){
     var outcome = player.createUnit(pos);
+    console.log(groups.length);
   });
   socket.on('controlUnit',function(pos){
     var outcome = player.controlUnit(pos);
+    if(outcome == 'success'){
+      console.log(player);
+      socket.emit('unitControlling',player);
+    }
   })
 
 
@@ -140,9 +146,6 @@ function Unit(x,y,radius,color){
   //can shoot
   self.shoot = function(damage,target){
     Bullet(self.x,self.y,damage,target);
-  }
-  self.drawPack = function(){
-    return {x:self.x,y:self.y,color:self.color,radius:self.radius};
   }
   return self;
 }
@@ -206,9 +209,7 @@ function Group(unit,owner){
     self.units.push(unit);
   }
   self.drawPack = function(){
-    return self.units.map(function(unit){
-      return unit.drawPack();
-    });
+    return {id:self.id,target:self.target.getTarget(),units:self.units,x:self.x,y:self.y};
   }
   //can add or remove units
 }
