@@ -98,7 +98,6 @@ io.sockets.on('connection',function(socket){
 
   socket.on('createUnit',function(pos){
     var outcome = player.createUnit(pos);
-    console.log(groups.length);
   });
   socket.on('controlUnit',function(pos){
     var outcome = player.controlUnit(pos);
@@ -129,7 +128,6 @@ function Unit(x,y,radius,color){
   self.takeDamage = function(dmg){
     self.health -= dmg;
     self.statsUpdate = true;
-    console.log(self.health);
   }
 
 
@@ -185,40 +183,31 @@ function Group(unit,owner){
       }
     }
     //checks if a unit needs a move update
-    if(self.target.getTarget() != null){
-      if(self.target.getTarget().units != null && self.target.getTarget().units.length == 0){
-        self.target.setTarget(null);
-        return;
-      }
-      var dist = self.target.getTarget().units != null ? self.attackRange : self.moveSpeed;
-      if(distance(self,self.target.getTarget()) > dist){
-        var rise = (self.target.getTarget().y - self.y);
+    if(self.target.getTarget() != null && self.target.getTarget().units != undefined && self.target.getTarget().units.length == 0)
+      self.target.setTarget(null);
+    if(self.target.getTarget() != null && distance(self,self.target.getTarget()) > (self.target.getTarget().units != undefined ? self.attackRange : self.moveSpeed)){
+      var rise = (self.target.getTarget().y - self.y);
         var run  = (self.target.getTarget().x - self.x);
         var length = Math.sqrt(Math.pow(run,2) + Math.pow(rise,2));
-      //console.log(run + " " + rise + " " + length);
 
         self.units.map(function(unit){
           unit.move((run/length)*self.moveSpeed,(rise/length)*self.moveSpeed);
         });
-
         var avgStats = {x:0,y:0};
-        self.units.map(function(unit){
-          avgStats.x += unit.x;
-          avgStats.y += unit.y;
-        });
-        self.x = avgStats.x / self.units.length;
-        self.y = avgStats.y / self.units.length;
-    }else if(self.target.getTarget().units == undefined){
+       self.units.map(function(unit){
+         avgStats.x += unit.x;
+         avgStats.y += unit.y;
+       });
+       self.x = avgStats.x / self.units.length;
+       self.y = avgStats.y / self.units.length;
+    }else if(self.target.getTarget() != null && self.target.getTarget().units == undefined){
       self.target.setTarget(null);
-    }else{
-      if(serverClock - self.lastAttack >= 30){
-        self.units.map(function(unit){
-          unit.shoot(self.bulletDamage,self.target.getTarget().units[0]);
-        });
-        self.lastAttack = serverClock;
-      }
+    }else if(serverClock - self.lastAttack >= 120 && self.target.getTarget() != null && distance(self,self.target.getTarget()) <= self.attackRange){
+      self.units.map(function(unit){
+        unit.shoot(self.bulletDamage,self.target.getTarget().units[0]);
+      });
+      self.lastAttack = serverClock;
     }
-  }
     if(statsUpdate){
       self.units.map(function(unit){
         unit.statsUpdate = false;
@@ -334,6 +323,23 @@ function Target(){
     if(groupAttacking != null)
       return groupAttacking;
     return null;
+  }
+  this.cont = function(grp){
+    return groupsDefending.some(function(group){
+      return grp.id == group.id;
+    }) && (groupAttacking != null && rp.id != groupAttacking.id);
+  }
+  this.addAttacker = function(grp){
+    if(!this.cont(grp))
+      groupsDefending.push(grp);
+  }
+  this.removeAttacker = function(grp){
+    groupsDefending = groupsDefending.filter(function(group){
+      grp.id != group.id;
+    });
+  }
+  this.getTotalTargets = function(){
+    return groupAttacking != null && !this.cont(groupAttacking) ? groupsDefending.concat(groupAttacking) : groupsDefending;
   }
 }
 function distance(item1,item2){
