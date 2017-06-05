@@ -65,21 +65,33 @@ function gameLoop(){
     drawGrid(sMx0,sMy0);
 
     var objsToDraw = serverDraw.filter(function(grp){
+      if(grp.units != undefined){
       return grp.units.filter(function(obj){
         return obj.x + obj.radius >= sMx0 &&
                obj.x - obj.radius <= sMx0 + s.width  &&
                obj.y + obj.radius >= sMy0  &&
                obj.y - obj.radius <= sMy0 +s.height ;
            }).length != 0;
+         }else{
+           return grp.x + grp.radius >= sMx0 &&
+                  grp.x - grp.radius <= sMx0 + s.width  &&
+                  grp.y + grp.radius >= sMy0  &&
+                  grp.y - grp.radius <= sMy0 +s.height ;
+         }
     });
   objsToDraw.map(function(grp){
     if(grp.target != null)
       drawLine(grp,grp.target,sMx0,sMy0);
   });
     for(var i= 0 ; i < objsToDraw.length;i++){
-      objsToDraw[i].units.map(function(unit){
-        drawCircle(unit,sMx0,sMy0, player.selectedGroup != null && player.selectedGroup.id == objsToDraw[i].id ? 3 : 1);
-      });
+      if(objsToDraw[i].units != undefined){
+        objsToDraw[i].units.map(function(unit){
+          drawCircle(unit,sMx0,sMy0, player.selectedGroup != null && player.selectedGroup.id == objsToDraw[i].id ? 3 : 1);
+        });
+    }else {
+      console.log("here");
+      drawCircle(objsToDraw[i],sMx0,sMy0,1);
+    }
     }
 }
 

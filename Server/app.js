@@ -8,7 +8,7 @@ var players = [];
 var groups = [];
 var bullets = [];
 
-const mapSize = {width:2000,height:2000};
+const mapSize = {width:700,height:700};
 
 
 
@@ -86,6 +86,7 @@ io.sockets.on('connection',function(socket){
     else if(player.selectedGroup.owner == player.id && clickedGroups[0].owner != player.id)
       player.selectedGroup.target.setTarget(clickedGroups[0]);
 
+
       return 'success';
   }
 
@@ -102,7 +103,6 @@ io.sockets.on('connection',function(socket){
   socket.on('controlUnit',function(pos){
     var outcome = player.controlUnit(pos);
     if(outcome == 'success'){
-      console.log(player);
       socket.emit('unitControlling',player);
     }
   })
@@ -126,14 +126,15 @@ function Unit(x,y,radius,color){
   }
 
   //can take damage
-  self.takeDamage = function(damage){
-    self.health -= damage;
+  self.takeDamage = function(dmg){
+    self.health -= dmg;
     self.statsUpdate = true;
+    console.log(self.health);
   }
 
 
   //can heal
-  self.health = function(health){
+  self.heal = function(health){
     self.health = self.health + health <= 1 ? self.health + health : 1;
     self.statsUpdate = true;
   }
@@ -163,35 +164,61 @@ function Group(unit,owner){
   self.y = self.units[0].y;
   self.attackRange = 50;
   self.moveSpeed = 1;
+  self.lastAttack = serverClock - 5;
+  self.lastHeal = serverClock - 5;
+  self.bulletDamage = .1;
 
   //can update
   self.update = function(){
-    var moveUpdate = self.units.some(function(unit){return unit.statsUpdate == true;});
-    var statsUpdate = self.units.some(function(unit){return unit.moveUpdate == true;});
+    var statsUpdate = self.units.some(function(unit){return unit.statsUpdate == true;});
     //checks if a unit needs a stat update
     if(statsUpdate){
-      //self.attackRange = self.units.map(function(u))
+      self.units.map(function(unit){
+        if(unit.health <= 0){
+          self.units.splice(unit,1);
+        }
+      });
+      if(self.units.length == 0){
+        groups = groups.filter(function(group){
+          return group.id != self.id;
+        });
+      }
     }
     //checks if a unit needs a move update
-    var dist = self.target.getTarget() != null && self.target.getTarget().units != undefined ? self.attackRange : self.moveSpeed / 2;
-    if(self.target.getTarget() != null && distance(self,self.target.getTarget()) > dist){
-      var rise = (self.target.getTarget().y - self.y);
-      var run  = (self.target.getTarget().x - self.x);
-      var length = Math.sqrt(Math.pow(run,2) + Math.pow(rise,2));
+    if(self.target.getTarget() != null){
+      if(self.target.getTarget().units != null && self.target.getTarget().units.length == 0){
+        self.target.setTarget(null);
+        return;
+      }
+      var dist = self.target.getTarget().units != null ? self.attackRange : self.moveSpeed;
+      if(distance(self,self.target.getTarget()) > dist){
+        var rise = (self.target.getTarget().y - self.y);
+        var run  = (self.target.getTarget().x - self.x);
+        var length = Math.sqrt(Math.pow(run,2) + Math.pow(rise,2));
       //console.log(run + " " + rise + " " + length);
 
-      self.units.map(function(unit){
-        unit.move((run/length)*self.moveSpeed,(rise/length)*self.moveSpeed);
-      });
+        self.units.map(function(unit){
+          unit.move((run/length)*self.moveSpeed,(rise/length)*self.moveSpeed);
+        });
 
-      var avgStats = {x:0,y:0};
-      self.units.map(function(unit){
-        avgStats.x += unit.x;
-        avgStats.y += unit.y;
-      });
-      self.x = avgStats.x / self.units.length;
-      self.y = avgStats.y / self.units.length;
+        var avgStats = {x:0,y:0};
+        self.units.map(function(unit){
+          avgStats.x += unit.x;
+          avgStats.y += unit.y;
+        });
+        self.x = avgStats.x / self.units.length;
+        self.y = avgStats.y / self.units.length;
+    }else if(self.target.getTarget().units == undefined){
+      self.target.setTarget(null);
+    }else{
+      if(serverClock - self.lastAttack >= 30){
+        self.units.map(function(unit){
+          unit.shoot(self.bulletDamage,self.target.getTarget().units[0]);
+        });
+        self.lastAttack = serverClock;
+      }
     }
+  }
     if(statsUpdate){
       self.units.map(function(unit){
         unit.statsUpdate = false;
@@ -207,6 +234,13 @@ function Group(unit,owner){
   }
   self.add = function(unit){
     self.units.push(unit);
+    var avgStats = {x:0,y:0};
+    self.units.map(function(unit){
+      avgStats.x += unit.x;
+      avgStats.y += unit.y;
+    });
+    self.x = avgStats.x / self.units.length;
+    self.y = avgStats.y / self.units.length;
   }
   self.drawPack = function(){
     return {id:self.id,target:self.target.getTarget(),units:self.units,x:self.x,y:self.y};
@@ -214,12 +248,12 @@ function Group(unit,owner){
   //can add or remove units
 }
 
-function Bullet(x,y,damage,target){
+function Bullet(x,y,dmg,target){
   //can have a target
   var self = {
     x:x,
     y:y,
-    damage:damage,
+    dmg:dmg,
     target:target,
     radius:5,
     color:"#000000"
@@ -239,7 +273,7 @@ function Bullet(x,y,damage,target){
   }
   //can cause damage
   self.damage = function(){
-    self.target.damage(self.damage);
+    self.target.takeDamage(self.dmg);
 
     for(var i =0; i < bullets.length;i++){
       if(self.id == bullets[i].id)
@@ -259,17 +293,21 @@ function drawLoop(){
   var drawPack = [];
   for(var i =0; i < groups.length;i++)
     drawPack = drawPack.concat(groups[i].drawPack());
-
-
+  for(var i =0; i < bullets.length;i++)
+    drawPack = drawPack.concat(bullets[i].drawPack());
 
   for(var i in sockets){
     var socket = sockets[i];
     socket.emit('serverDraw',drawPack);
   }
 }
+var serverClock = 0;
 function gameLoop(){
+  serverClock++;
   for(var i =0; i < groups.length;i++)
     groups[i].update();
+  for(var i =0; i < bullets.length;i++)
+    bullets[i].move();
 }
 setInterval(drawLoop,1000/60);
 setInterval(gameLoop,1000/30);
@@ -280,12 +318,15 @@ function Target(){
   var groupAttacking = null;
   var groupsDefending = [];
   this.setTarget = function(item){
-      if(item.units != undefined)
-        groupAttacking = item;
-      else {
-        groupAttacking = null;
-        moveLocation = item;
-      }
+    groupAttacking = null;
+    moveLocation = null;
+    if(item == null)
+      return;
+    else if(item.units != undefined){
+      groupAttacking = item;
+    }else if(item != null){
+      moveLocation = item;
+    }
   }
   this.getTarget = function(){
     if(moveLocation != null)
